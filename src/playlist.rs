@@ -1,11 +1,10 @@
 use std::{
-    fs::{self, DirEntry},
-    io,
-    path::{Path, PathBuf},
+    fs::{self},
+    path::PathBuf,
 };
 
 use projectm::core::ProjectM;
-use rand::{seq::SliceRandom, Rng};
+use rand::Rng;
 use walkdir::WalkDir;
 
 #[derive(Default)]

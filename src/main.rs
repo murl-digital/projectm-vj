@@ -1,6 +1,5 @@
 use std::{
     num::NonZeroU32,
-    rc::Rc,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -16,18 +15,18 @@ use glutin::{
     config::{Config, ConfigTemplateBuilder, GlConfig},
     context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext, Version},
     display::GetGlDisplay,
-    prelude::{GlContext, GlDisplay, NotCurrentGlContext, PossiblyCurrentGlContext},
+    prelude::{GlDisplay, NotCurrentGlContext, PossiblyCurrentGlContext},
     surface::{GlSurface, Surface, SwapInterval, WindowSurface},
 };
 use glutin_winit::{finalize_window, DisplayBuilder, GlWindow};
 use playlist::Playlist;
 use projectm::core::ProjectM;
-use raw_window_handle::{HasRawWindowHandle, HasWindowHandle};
+use raw_window_handle::HasWindowHandle;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::{ButtonId, DeviceEvent, ElementState, Event, RawKeyEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopBuilder},
+    event::WindowEvent,
+    event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowAttributes},
 };
@@ -76,8 +75,6 @@ impl ApplicationHandler for VJApp {
 
         let egui_window =
             finalize_window(event_loop, egui_winit_window_builder, &self.gl_config).unwrap();
-        let raw_window_handle = egui_window.window_handle().unwrap().as_raw();
-        let context_attributes = ContextAttributesBuilder::new().build(Some(raw_window_handle));
 
         let (width, height): (u32, u32) = egui_window.inner_size().into();
         let width = NonZeroU32::new(width).unwrap_or(NonZeroU32::MIN);
@@ -106,6 +103,7 @@ impl ApplicationHandler for VJApp {
             .set_swap_interval(&self.gl_context, SwapInterval::Wait(NonZeroU32::MIN))
             .unwrap();
 
+        #[allow(clippy::arc_with_non_send_sync)]
         let gl = Arc::new(unsafe {
             egui_glow::glow::Context::from_loader_function(|s| {
                 let s = std::ffi::CString::new(s)
@@ -145,7 +143,9 @@ impl ApplicationHandler for VJApp {
             }
             WindowEvent::RedrawRequested if window_id == self.main_window.window.id() => {
                 self.input_stream.as_ref().inspect(|s| s.play().unwrap());
-                self.gl_context.make_current(&self.main_window.gl_surface);
+                self.gl_context
+                    .make_current(&self.main_window.gl_surface)
+                    .unwrap();
                 let projectm = self.main_window.projectm.lock().unwrap();
                 projectm.render_frame();
                 self.main_window
@@ -221,7 +221,7 @@ impl ApplicationHandler for VJApp {
                                                     .input_device
                                                     .build_input_stream(
                                                         &config,
-                                                        move |data, info| {
+                                                        move |data, _info| {
                                                             let pm = pm.lock().unwrap();
                                                             pm.pcm_add_float(data.to_vec(), 2);
                                                         },
@@ -288,7 +288,9 @@ impl ApplicationHandler for VJApp {
                     }
 
                     {
-                        self.gl_context.make_current(&control_panel.gl_surface);
+                        self.gl_context
+                            .make_current(&control_panel.gl_surface)
+                            .unwrap();
                         unsafe {
                             use egui_glow::glow::HasContext as _;
                             control_panel.gl.clear_color(0.2, 0.2, 0.2, 1.0);
