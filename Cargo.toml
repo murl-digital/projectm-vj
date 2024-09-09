@@ -1,0 +1,23 @@
+[package]
+name = "projectm-vj"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cpal = { version = "0.15.3", default-features = false, features = ["jack"] }
+egui = { version = "0.28.1", git = "https://github.com/emilk/egui" }
+egui_glow = { version = "0.28.1", git = "https://github.com/emilk/egui", features = [
+    "winit",
+] }
+fuzzy-matcher = "0.3.7"
+glutin = "0.32"
+glutin-winit = "0.5"
+projectm = { git = "https://github.com/projectM-visualizer/projectm-rs", version = "2.0.1-alpha" }
+rand = "0.8.5"
+raw-window-handle = "0.6"
+rfd = "0.14.1"
+walkdir = "2.5.0"
+winit = { version = "0.30" }
+
+[patch."https://github.com/projectM-visualizer/projectm-rs"]
+projectm = { path = "../projectm-rs" }
