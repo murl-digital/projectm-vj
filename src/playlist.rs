@@ -40,23 +40,23 @@ impl Playlist {
         }
     }
 
-    pub fn play_random(&mut self, pm: &ProjectM) {
+    pub fn play_random(&mut self, pm: &ProjectM, smooth: bool) {
         self.current_index = rand::thread_rng().gen_range(0..self.presets.len());
 
-        self.load_current_preset(pm);
+        self.load_current_preset(pm, smooth);
     }
 
-    fn load_current_preset(&mut self, pm: &ProjectM) {
+    fn load_current_preset(&mut self, pm: &ProjectM, smooth: bool) {
         let preset = &self.presets[self.current_index];
         println!("loading {}...", preset.0);
-        pm.load_preset_data(&preset.1, false);
+        pm.load_preset_data(&preset.1, smooth);
         println!("done!");
     }
 
-    pub fn play_index(&mut self, pm: &ProjectM, index: usize) {
+    pub fn play_index(&mut self, pm: &ProjectM, index: usize, smooth: bool) {
         self.current_index = index;
 
-        self.load_current_preset(pm);
+        self.load_current_preset(pm, smooth);
     }
 
     pub fn presets(&self) -> impl Iterator<Item = &str> + '_ {

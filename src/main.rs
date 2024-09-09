@@ -49,6 +49,7 @@ struct ControlPanel {
     gl_surface: Surface<WindowSurface>,
     gl: Arc<egui_glow::glow::Context>,
     egui_glow: EguiGlow,
+    smooth_transition: bool,
 }
 
 struct VJApp {
@@ -123,6 +124,7 @@ impl ApplicationHandler for VJApp {
             gl_surface,
             gl,
             egui_glow,
+            smooth_transition: false,
         });
     }
 
@@ -134,6 +136,7 @@ impl ApplicationHandler for VJApp {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                self.main_window.projectm.lock().unwrap().destroy();
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if window_id == self.main_window.window.id() => {
@@ -231,6 +234,8 @@ impl ApplicationHandler for VJApp {
                                             }
                                         }
                                     });
+
+                                ui.toggle_value(&mut control_panel.smooth_transition, "SMOOTH")
                             });
 
                             egui::CentralPanel::default().show(egui_ctx, |ui| {
@@ -267,6 +272,7 @@ impl ApplicationHandler for VJApp {
                                         self.main_window.playlist.play_index(
                                             &self.main_window.projectm.lock().unwrap(),
                                             i,
+                                            control_panel.smooth_transition,
                                         );
                                     }
                                 });
@@ -274,6 +280,7 @@ impl ApplicationHandler for VJApp {
                         });
 
                     if quit {
+                        self.main_window.projectm.lock().unwrap().destroy();
                         event_loop.exit();
                     } else {
                         control_panel.window.request_redraw();
@@ -323,7 +330,17 @@ impl ApplicationHandler for VJApp {
                 if event.state.is_pressed() {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::KeyR) => {
-                            self.main_window.playlist.play_random(&projectm);
+                            self.main_window.playlist.play_random(
+                                &projectm,
+                                self.control_panel
+                                    .as_ref()
+                                    .map_or(false, |c| c.smooth_transition),
+                            );
+                        }
+                        PhysicalKey::Code(KeyCode::KeyT) => {
+                            if let Some(c) = self.control_panel.as_mut() {
+                                c.smooth_transition = !c.smooth_transition;
+                            }
                         }
                         _ => (),
                     }
@@ -395,6 +412,7 @@ fn main() {
 
     let size = window.inner_size();
     pm.set_window_size(size.width as usize, size.height as usize);
+    pm.set_soft_cut_duration(0.5);
 
     let audio_host = cpal::default_host();
     let input_device = audio_host.default_input_device().unwrap();
