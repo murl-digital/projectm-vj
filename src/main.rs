@@ -318,33 +318,16 @@ impl ApplicationHandler for VJApp {
                     }
                 }
             }
-            _ => (),
-        }
-    }
-
-    fn device_event(
-        &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        device_id: winit::event::DeviceId,
-        event: DeviceEvent,
-    ) {
-        let projectm = self.main_window.projectm.lock().unwrap();
-        match event {
-            DeviceEvent::Key(RawKeyEvent {
-                physical_key: PhysicalKey::Code(KeyCode::ArrowUp),
-                state: ElementState::Pressed,
-            }) => {
-                let sensitivity = projectm.get_beat_sensitivity();
-                println!("sensitivity before: {sensitivity}");
-                projectm.set_beat_sensitivity(sensitivity + 0.01);
-                let sensitivity = projectm.get_beat_sensitivity();
-                println!("sensitivity after: {sensitivity}");
-            }
-            DeviceEvent::Key(RawKeyEvent {
-                physical_key: PhysicalKey::Code(KeyCode::KeyR),
-                state: ElementState::Pressed,
-            }) => {
-                self.main_window.playlist.play_random(&projectm);
+            WindowEvent::KeyboardInput { event, .. } => {
+                let projectm = self.main_window.projectm.lock().unwrap();
+                if event.state.is_pressed() {
+                    match event.physical_key {
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            self.main_window.playlist.play_random(&projectm);
+                        }
+                        _ => (),
+                    }
+                }
             }
             _ => (),
         }
@@ -412,10 +395,6 @@ fn main() {
 
     let size = window.inner_size();
     pm.set_window_size(size.width as usize, size.height as usize);
-
-    pm.set_fps(0);
-
-    println!("{}", pm.get_fps());
 
     let audio_host = cpal::default_host();
     let input_device = audio_host.default_input_device().unwrap();
