@@ -1904,6 +1904,7 @@ dependencies = [
 [[package]]
 name = "projectm"
 version = "2.0.1-alpha"
+source = "git+https://github.com/murl-digital/projectm-rs/#78ff40e29381c9909db07b498be9de84cd8d08c4"
 dependencies = [
  "libc",
  "projectm-sys",
@@ -1913,6 +1914,7 @@ dependencies = [
 [[package]]
 name = "projectm-sys"
 version = "1.0.8"
+source = "git+https://github.com/murl-digital/projectm-rs/#78ff40e29381c9909db07b498be9de84cd8d08c4"
 dependencies = [
  "bindgen 0.66.1",
  "cmake",

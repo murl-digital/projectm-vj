@@ -20,4 +20,4 @@ walkdir = "2.5.0"
 winit = { version = "0.30" }
 
 [patch."https://github.com/projectM-visualizer/projectm-rs"]
-projectm = { path = "../projectm-rs" }
+projectm = { git = "https://github.com/murl-digital/projectm-rs/" }
