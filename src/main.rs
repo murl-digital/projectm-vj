@@ -34,7 +34,7 @@ use winit::{
 mod playlist;
 
 struct MainWindow {
-    projectm: Arc<Mutex<Option<ProjectM>>>,
+    projectm: Arc<Mutex<ProjectM>>,
     playlist: Playlist,
     window: Window,
     gl_surface: Surface<WindowSurface>,
@@ -134,18 +134,15 @@ impl ApplicationHandler for VJApp {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                if let Some(projectm) = self.main_window.projectm.lock().unwrap().take() {
-                    projectm.destroy();
-                }
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if window_id == self.main_window.window.id() => {
-                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
-                    projectm.set_window_size(size.width as usize, size.height as usize);
-                }
+                let projectm = self.main_window.projectm.lock().unwrap();
+                projectm.set_window_size(size.width as usize, size.height as usize);
             }
             WindowEvent::RedrawRequested if window_id == self.main_window.window.id() => {
-                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
+                let projectm = self.main_window.projectm.lock().unwrap();
+                {
                     self.input_stream.as_ref().inspect(|s| s.play().unwrap());
                     self.gl_context
                         .make_current(&self.main_window.gl_surface)
@@ -269,9 +266,7 @@ impl ApplicationHandler for VJApp {
                                                         &config,
                                                         move |data, _info| {
                                                             let pm = pm.lock().unwrap();
-                                                            if let Some(pm) = pm.as_ref() {
-                                                                pm.pcm_add_float(data.to_vec(), 2);
-                                                            }
+                                                            pm.pcm_add_float(data.to_vec(), 2);
                                                         },
                                                         |_| {},
                                                         None,
@@ -317,24 +312,18 @@ impl ApplicationHandler for VJApp {
                                     }
 
                                     if let Some(i) = index_to_play {
-                                        if let Some(pm) =
-                                            self.main_window.projectm.lock().unwrap().as_ref()
-                                        {
-                                            self.main_window.playlist.play_index(
-                                                pm,
-                                                i,
-                                                control_panel.smooth_transition,
-                                            );
-                                        }
+                                        let pm = self.main_window.projectm.lock().unwrap();
+                                        self.main_window.playlist.play_index(
+                                            &pm,
+                                            i,
+                                            control_panel.smooth_transition,
+                                        );
                                     }
                                 });
                             });
                         });
 
                     if quit {
-                        if let Some(pm) = self.main_window.projectm.lock().unwrap().take() {
-                            pm.destroy();
-                        }
                         event_loop.exit();
                     } else {
                         control_panel.window.request_redraw();
@@ -382,12 +371,13 @@ impl ApplicationHandler for VJApp {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
+                let projectm = self.main_window.projectm.lock().unwrap();
+                {
                     if event.state.is_pressed() {
                         match event.physical_key {
                             PhysicalKey::Code(KeyCode::KeyR) => {
                                 self.main_window.playlist.play_random(
-                                    projectm,
+                                    &projectm,
                                     self.control_panel
                                         .as_ref()
                                         .map_or(false, |c| c.smooth_transition),
@@ -405,6 +395,12 @@ impl ApplicationHandler for VJApp {
             }
             _ => (),
         }
+    }
+}
+
+impl Drop for VJApp {
+    fn drop(&mut self) {
+        self.main_window.projectm.lock().unwrap().destroy();
     }
 }
 
@@ -478,7 +474,7 @@ fn main() {
         gl_context,
         gl_config,
         main_window: MainWindow {
-            projectm: Arc::new(Mutex::new(Some(pm))),
+            projectm: Arc::new(Mutex::new(pm)),
             playlist,
             window,
             gl_surface,
