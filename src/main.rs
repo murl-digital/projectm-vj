@@ -34,7 +34,7 @@ use winit::{
 mod playlist;
 
 struct MainWindow {
-    projectm: Arc<Mutex<ProjectM>>,
+    projectm: Arc<Mutex<Option<ProjectM>>>,
     playlist: Playlist,
     window: Window,
     gl_surface: Surface<WindowSurface>,
@@ -134,38 +134,42 @@ impl ApplicationHandler for VJApp {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                self.main_window.projectm.lock().unwrap().destroy();
+                if let Some(projectm) = self.main_window.projectm.lock().unwrap().take() {
+                    projectm.destroy();
+                }
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if window_id == self.main_window.window.id() => {
-                let projectm = self.main_window.projectm.lock().unwrap();
-                projectm.set_window_size(size.width as usize, size.height as usize);
+                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
+                    projectm.set_window_size(size.width as usize, size.height as usize);
+                }
             }
             WindowEvent::RedrawRequested if window_id == self.main_window.window.id() => {
-                self.input_stream.as_ref().inspect(|s| s.play().unwrap());
-                self.gl_context
-                    .make_current(&self.main_window.gl_surface)
-                    .unwrap();
-                let projectm = self.main_window.projectm.lock().unwrap();
-                projectm.render_frame();
-                self.main_window
-                    .gl_surface
-                    .swap_buffers(&self.gl_context)
-                    .unwrap();
+                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
+                    self.input_stream.as_ref().inspect(|s| s.play().unwrap());
+                    self.gl_context
+                        .make_current(&self.main_window.gl_surface)
+                        .unwrap();
+                    projectm.render_frame();
+                    self.main_window
+                        .gl_surface
+                        .swap_buffers(&self.gl_context)
+                        .unwrap();
 
-                self.main_window.window.request_redraw();
+                    self.main_window.window.request_redraw();
 
-                self.main_window.frame_count += 1;
-                let now = Instant::now();
+                    self.main_window.frame_count += 1;
+                    let now = Instant::now();
 
-                if now
-                    .checked_duration_since(self.main_window.second_counter)
-                    .is_some_and(|d| d.as_secs_f64() >= 1.0)
-                {
-                    self.main_window.fps = self.main_window.frame_count;
-                    projectm.set_fps(self.main_window.fps as u32);
-                    self.main_window.second_counter = now;
-                    self.main_window.frame_count = 0;
+                    if now
+                        .checked_duration_since(self.main_window.second_counter)
+                        .is_some_and(|d| d.as_secs_f64() >= 1.0)
+                    {
+                        self.main_window.fps = self.main_window.frame_count;
+                        projectm.set_fps(self.main_window.fps as u32);
+                        self.main_window.second_counter = now;
+                        self.main_window.frame_count = 0;
+                    }
                 }
             }
             WindowEvent::RedrawRequested
@@ -186,6 +190,23 @@ impl ApplicationHandler for VJApp {
                                 if ui.button("Quit").clicked() {
                                     quit = true;
                                 }
+
+                                ComboBox::from_label("Audio Host")
+                                    .selected_text(self.audio_host.id().name())
+                                    .show_ui(ui, |ui| {
+                                        for host in cpal::available_hosts() {
+                                            if ui
+                                                .selectable_label(
+                                                    self.audio_host.id() == host,
+                                                    host.name(),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.audio_host = cpal::host_from_id(host).unwrap();
+                                            }
+                                        }
+                                    });
+
                                 ComboBox::from_label("Audio Device")
                                     .selected_text(self.input_device.name().unwrap())
                                     .show_ui(ui, |ui| {
@@ -195,6 +216,14 @@ impl ApplicationHandler for VJApp {
                                                 if let Some(stream) = self.input_stream.take() {
                                                     drop(stream);
                                                 }
+
+                                                println!(
+                                                    "{:?}",
+                                                    self.input_device
+                                                        .supported_input_configs()
+                                                        .unwrap()
+                                                        .collect::<Vec<_>>()
+                                                );
 
                                                 let default_config = self
                                                     .input_device
@@ -212,10 +241,27 @@ impl ApplicationHandler for VJApp {
                                                 println!("{:?}", default_config.buffer_size());
 
                                                 let mut config: cpal::StreamConfig = default_config
-                                                    .with_sample_rate(cpal::SampleRate(44100))
+                                                    .try_with_sample_rate(cpal::SampleRate(44100))
+                                                    .unwrap_or_else(|| {
+                                                        default_config.with_sample_rate(
+                                                            default_config.min_sample_rate(),
+                                                        )
+                                                    })
                                                     .into();
 
-                                                config.buffer_size = BufferSize::Fixed(512);
+                                                config.buffer_size =
+                                                    BufferSize::Fixed(std::cmp::max(
+                                                        512,
+                                                        match default_config.buffer_size() {
+                                                            cpal::SupportedBufferSize::Range {
+                                                                min,
+                                                                ..
+                                                            } => *min,
+                                                            cpal::SupportedBufferSize::Unknown => {
+                                                                512
+                                                            }
+                                                        },
+                                                    ));
 
                                                 let stream = self
                                                     .input_device
@@ -223,7 +269,9 @@ impl ApplicationHandler for VJApp {
                                                         &config,
                                                         move |data, _info| {
                                                             let pm = pm.lock().unwrap();
-                                                            pm.pcm_add_float(data.to_vec(), 2);
+                                                            if let Some(pm) = pm.as_ref() {
+                                                                pm.pcm_add_float(data.to_vec(), 2);
+                                                            }
                                                         },
                                                         |_| {},
                                                         None,
@@ -269,18 +317,24 @@ impl ApplicationHandler for VJApp {
                                     }
 
                                     if let Some(i) = index_to_play {
-                                        self.main_window.playlist.play_index(
-                                            &self.main_window.projectm.lock().unwrap(),
-                                            i,
-                                            control_panel.smooth_transition,
-                                        );
+                                        if let Some(pm) =
+                                            self.main_window.projectm.lock().unwrap().as_ref()
+                                        {
+                                            self.main_window.playlist.play_index(
+                                                pm,
+                                                i,
+                                                control_panel.smooth_transition,
+                                            );
+                                        }
                                     }
                                 });
                             });
                         });
 
                     if quit {
-                        self.main_window.projectm.lock().unwrap().destroy();
+                        if let Some(pm) = self.main_window.projectm.lock().unwrap().take() {
+                            pm.destroy();
+                        }
                         event_loop.exit();
                     } else {
                         control_panel.window.request_redraw();
@@ -328,23 +382,24 @@ impl ApplicationHandler for VJApp {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                let projectm = self.main_window.projectm.lock().unwrap();
-                if event.state.is_pressed() {
-                    match event.physical_key {
-                        PhysicalKey::Code(KeyCode::KeyR) => {
-                            self.main_window.playlist.play_random(
-                                &projectm,
-                                self.control_panel
-                                    .as_ref()
-                                    .map_or(false, |c| c.smooth_transition),
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::KeyT) => {
-                            if let Some(c) = self.control_panel.as_mut() {
-                                c.smooth_transition = !c.smooth_transition;
+                if let Some(projectm) = self.main_window.projectm.lock().unwrap().as_ref() {
+                    if event.state.is_pressed() {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::KeyR) => {
+                                self.main_window.playlist.play_random(
+                                    projectm,
+                                    self.control_panel
+                                        .as_ref()
+                                        .map_or(false, |c| c.smooth_transition),
+                                );
                             }
+                            PhysicalKey::Code(KeyCode::KeyT) => {
+                                if let Some(c) = self.control_panel.as_mut() {
+                                    c.smooth_transition = !c.smooth_transition;
+                                }
+                            }
+                            _ => (),
                         }
-                        _ => (),
                     }
                 }
             }
@@ -423,7 +478,7 @@ fn main() {
         gl_context,
         gl_config,
         main_window: MainWindow {
-            projectm: Arc::new(Mutex::new(pm)),
+            projectm: Arc::new(Mutex::new(Some(pm))),
             playlist,
             window,
             gl_surface,
